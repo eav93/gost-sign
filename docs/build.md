@@ -38,7 +38,7 @@ Workflow `.github/workflows/binaries.yml`:
 
 Сборка нативная на соответствующем runner; workflow сверяет Rust host с ожидаемым target. Эти метки приведены в [GitHub hosted runners reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Доступность/оплата runners зависит от репозитория и плана GitHub.
 
-Запуск: push в `main`/`master`, pull request, ручной `workflow_dispatch` или вызов из release workflow. Workflow проверяет тесты, `--help`/`--version`, упаковывает бинарник с документацией, формирует SHA-256. Артефакты доступны в Actions → выбранный запуск → Artifacts, срок хранения 14 дней. Для установки скачайте artifact для своей платформы и распакуйте находящийся внутри архив.
+Запуск: ручной `workflow_dispatch` или вызов из release workflow. Проверки push/PR выполняет `ci.yml`, без дублирования архивных сборок. Workflow проверяет тесты, `--help`/`--version`, упаковывает бинарник с документацией, формирует SHA-256. Артефакты доступны в Actions → выбранный запуск → Artifacts, срок хранения 14 дней. Для установки скачайте artifact для своей платформы и распакуйте находящийся внутри архив.
 
 Сам workflow бинарников только собирает артефакты с `contents: read`. Release workflow публикует их после успешной сборки всей матрицы; право `contents: write` выдано только задаче публикации. Версия архива берётся из собранного бинарника/Cargo.toml, не из имени тега. Перед версионным тегом обновите workspace version. BUILD-INFO содержит commit, target, Rust и признак незакоммиченных файлов.
 

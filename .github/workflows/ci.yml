@@ -1,5 +1,12 @@
 name: Portable Rust and PHP
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

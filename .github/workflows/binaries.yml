@@ -1,8 +1,5 @@
 name: Бинарники gost-sign
 on:
-  push:
-    branches: [main, master]
-  pull_request:
   workflow_call:
     inputs:
       ref:
