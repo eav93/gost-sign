@@ -820,8 +820,6 @@ dependencies = [
  "gost-sign-rust",
  "openssl",
  "pkcs8",
- "rpassword",
- "tempfile",
  "zeroize",
 ]
 

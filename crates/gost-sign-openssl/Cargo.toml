@@ -12,16 +12,11 @@ gost-sign-cms = { path = "../gost-sign-cms" }
 gost-sign-core = { path = "../gost-sign-core" }
 gost-sign-pfx = { path = "../gost-sign-pfx" }
 zeroize = "1"
-gost-sign-export = { path = "../gost-sign-export" }
-rpassword = "7"
-tempfile = "3"
-
-[features]
-pcsc = ["gost-sign-export/pcsc"]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+gost-sign-export = { path = "../gost-sign-export" }
 gost-sign-rust = { path = "../gost-sign-rust" }
 pkcs8 = { version = "0.11.0", features = ["encryption"] }

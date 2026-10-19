@@ -15,15 +15,30 @@ pkcs8 = "0.11"
 gost-sign-core = { path = "../gost-sign-core" }
 gost-sign-cms = { path = "../gost-sign-cms" }
 gost-sign-pfx = { path = "../gost-sign-pfx" }
-gost-sign-export = { path = "../gost-sign-export" }
-rpassword = "7"
-tempfile = "3"
+gost-sign-export = { path = "../gost-sign-export", optional = true }
+rpassword = { version = "7", optional = true }
+tempfile = { version = "3", optional = true }
 
 [features]
-pcsc = ["gost-sign-export/pcsc"]
+cli = ["dep:gost-sign-export", "dep:rpassword", "dep:tempfile"]
+pcsc = ["cli", "gost-sign-export/pcsc"]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+gost-sign-export = { path = "../gost-sign-export" }
 gost-sign-experimental = { path = "../gost-sign-experimental" }
+
+[[bin]]
+name = "gost-sign"
+path = "src/bin/gost-sign.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "export_container"
+required-features = ["cli"]
+
+[[example]]
+name = "sign_pfx"
+required-features = ["cli"]

@@ -54,7 +54,7 @@ PIN не устанавливается и не изменяется. Прогр
 Запускаемый пример находится в `crates/gost-sign-rust/examples/export_container.rs`:
 
 ```sh
-cargo run --release -p gost-sign-rust --example export_container -- /path/container.000 /path/identity.pfx
+cargo run --release -p gost-sign-rust --features cli --example export_container -- /path/container.000 /path/identity.pfx
 ```
 
 Пароли вводятся скрыто. Основные вызовы для включения в приложение:
@@ -100,7 +100,7 @@ Callback вызывается только после отказа чтения 
 Rust, со скрытым вводом пароля:
 
 ```sh
-cargo run --release -p gost-sign-rust --example sign_pfx -- identity.pfx invoice.pdf invoice.pdf.p7s
+cargo run --release -p gost-sign-rust --features cli --example sign_pfx -- identity.pfx invoice.pdf invoice.pdf.p7s
 ```
 
 PHP, после подключения расширения:

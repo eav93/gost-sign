@@ -11,7 +11,7 @@ cargo build --locked --release -p gost-sign-rust --bin gost-sign --features pcsc
 ./target/release/gost-sign
 ```
 
-Windows: `.\target\release\gost-sign.exe`. После копирования бинарника Cargo больше не нужен. Скрипт запуска не требуется. Для сборки без поддержки токена опустите `--features pcsc`.
+Windows: `.\target\release\gost-sign.exe`. После копирования бинарника Cargo больше не нужен. Скрипт запуска не требуется. Для сборки без поддержки токена используйте `--features cli` вместо `--features pcsc`.
 
 ## Проверки
 
