@@ -6,6 +6,7 @@ pub mod token;
 
 pub mod container;
 pub mod cryptopro;
+pub mod discovery;
 
 /// Russian diagnostics for errors that would otherwise come from system libraries.
 pub fn console_error(error: &(dyn std::error::Error + 'static)) -> String {

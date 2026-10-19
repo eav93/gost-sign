@@ -19,3 +19,9 @@ workspace = true
 
 [features]
 pcsc = ["dep:pcsc"]
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+
+[dev-dependencies]
+tempfile = "3"

@@ -85,12 +85,38 @@ fn save(path: &Path, bytes: &[u8]) -> Result<()> {
 fn show_certificate(bytes: &[u8]) -> Result<()> {
     let cert = gost_sign_core::parse_certificate_der(bytes)?;
     let tbs = cert.tbs_certificate();
+    let field = |oid: &str| -> Option<String> {
+        tbs.subject()
+            .iter()
+            .find(|a| a.oid.to_string() == oid)
+            .map(|a| {
+                String::from_utf8_lossy(a.value.value())
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .collect()
+            })
+    };
     println!(
-        "Владелец: {}\nИздатель: {}\nСрок: {} — {}",
-        tbs.subject(),
-        tbs.issuer(),
+        "Владелец: {}",
+        field("2.5.4.3").unwrap_or_else(|| tbs.subject().to_string())
+    );
+    if let Some(ogrnip) = field("1.2.643.100.5") {
+        println!("ИП, ОГРНИП: {ogrnip}");
+    }
+    if let Some(org) = field("2.5.4.10") {
+        println!("Организация: {org}");
+    }
+    if let Some(ogrn) = field("1.2.643.100.1") {
+        println!("ОГРН: {ogrn}");
+    }
+    if let Some(inn) = field("1.2.643.3.131.1.1") {
+        println!("ИНН: {inn}");
+    }
+    println!(
+        "Срок: {} — {}\nИздатель: {}",
         tbs.validity().not_before,
-        tbs.validity().not_after
+        tbs.validity().not_after,
+        tbs.issuer()
     );
     Ok(())
 }
@@ -102,67 +128,203 @@ fn open_pfx() -> Result<SigningIdentity> {
     show_certificate(identity.certificate_der())?;
     Ok(identity)
 }
-#[cfg(feature = "pcsc")]
-fn with_token<T>(f: impl FnOnce(&std::ffi::CStr, u16) -> Result<T>) -> Result<T> {
-    let readers = gost_sign_export::token::readers()?;
-    if readers.is_empty() {
-        return Err("Рутокен не найден. Подключите его и проверьте службу PC/SC".into());
+#[derive(Clone)]
+enum Location {
+    Local(gost_sign_export::discovery::Source),
+    #[cfg(feature = "pcsc")]
+    Token {
+        reader: std::ffi::CString,
+        directory: u16,
+    },
+}
+#[derive(Clone)]
+struct Selected {
+    location: Location,
+    certificates: Vec<Vec<u8>>,
+    notice: Option<String>,
+}
+impl Selected {
+    fn label(&self) -> String {
+        match &self.location {
+            Location::Local(source) => source.label(),
+            #[cfg(feature = "pcsc")]
+            Location::Token { reader, directory } => {
+                format!("{} / {directory:04x}", reader.to_string_lossy())
+            }
+        }
     }
-    let index = if readers.len() == 1 {
-        println!("Считыватель: {}", readers[0].to_string_lossy());
+    fn load(&self) -> Result<Container> {
+        match &self.location {
+            Location::Local(source) => source.load(),
+            #[cfg(feature = "pcsc")]
+            Location::Token { reader, directory } => {
+                gost_sign_export::token::container_with_pin(reader, *directory, || {
+                    let pin = secret("PIN пользователя (Enter — отмена, одна попытка): ")?;
+                    if pin.is_empty() {
+                        return Err(Box::new(Cancelled));
+                    }
+                    Ok(Zeroizing::new(pin.as_bytes().to_vec()))
+                })
+            }
+        }
+    }
+    fn show(&self) -> Result<()> {
+        println!("Источник: {}", self.label());
+        if let Some(notice) = &self.notice {
+            println!("{notice}");
+        }
+        if self.certificates.is_empty() {
+            println!("Открытый сертификат недоступен или отсутствует.");
+        }
+        for (i, cert) in self.certificates.iter().enumerate() {
+            println!("Сертификат {}:", i + 1);
+            show_certificate(cert)?;
+        }
+        Ok(())
+    }
+}
+fn local_entries(roots: Option<&[PathBuf]>) -> Vec<Selected> {
+    let report = match roots {
+        Some(roots) => gost_sign_export::discovery::directories(roots),
+        None => gost_sign_export::discovery::system(),
+    };
+    for notice in report.notices {
+        println!("Примечание: {notice}");
+    }
+    report
+        .entries
+        .into_iter()
+        .map(|e| Selected {
+            location: Location::Local(e.source),
+            certificates: e.certificates,
+            notice: e.notice,
+        })
+        .collect()
+}
+fn token_entries() -> Result<Vec<Selected>> {
+    #[cfg(feature = "pcsc")]
+    {
+        let mut entries = Vec::new();
+        for reader in gost_sign_export::token::readers()? {
+            println!("Поиск на {} (без PIN)…", reader.to_string_lossy());
+            let discovered = gost_sign_export::token::discover(&reader, |fid| {
+                if fid & 31 == 0 {
+                    println!("  Проверка каталогов: {} /256", usize::from(fid - 0x0a00));
+                }
+            });
+            match discovered {
+                Ok(found) => {
+                    for entry in found {
+                        entries.push(Selected {
+                            location: Location::Token {
+                                reader: reader.clone(),
+                                directory: entry.directory,
+                            },
+                            certificates: entry.certificates,
+                            notice: entry.notice,
+                        });
+                    }
+                }
+                Err(e) => println!(
+                    "{}: {}",
+                    reader.to_string_lossy(),
+                    gost_sign_export::console_error(e.as_ref())
+                ),
+            }
+        }
+        Ok(entries)
+    }
+    #[cfg(not(feature = "pcsc"))]
+    {
+        Err("В этой сборке нет PC/SC".into())
+    }
+}
+fn choose_entry(entries: Vec<Selected>) -> Result<Selected> {
+    if entries.is_empty() {
+        return Err("Контейнеры не найдены. Можно указать папку вручную".into());
+    }
+    for (i, entry) in entries.iter().enumerate() {
+        println!("\n──── Контейнер {} ────", i + 1);
+        entry.show()?;
+    }
+    println!("\n:назад — сохранить прежний выбор и вернуться в меню.");
+    let value = prompt("Номер контейнера: ")?;
+    let index = value.parse::<usize>()?;
+    entries
+        .into_iter()
+        .nth(index.checked_sub(1).ok_or("Неверный номер контейнера")?)
+        .ok_or_else(|| "Неверный номер контейнера".into())
+}
+fn select_container() -> Result<Selected> {
+    println!(
+        "1 — Найти контейнеры КриптоПро на компьютере\n2 — Найти контейнеры на Рутокен Lite\n3 — Указать папку контейнера или папку для поиска"
+    );
+    let source = prompt("Источник [1]: ")?;
+    let entries = match source.as_str() {
+        "" | "1" => local_entries(None),
+        "2" => token_entries()?,
+        "3" => {
+            let folder = path("Папка", None)?;
+            local_entries(Some(&[folder]))
+        }
+        _ => return Err("Выберите 1, 2 или 3".into()),
+    };
+    choose_entry(entries)
+}
+fn confirm_selected(selected: &Selected) -> Result<()> {
+    println!("\nВыбранный контейнер:");
+    selected.show()?;
+    let answer = prompt("Enter — продолжить; :назад — вернуться и сменить контейнер: ")?;
+    if !answer.is_empty() {
+        return Err(Box::new(Cancelled));
+    }
+    Ok(())
+}
+fn selected_certificate(selected: &Selected) -> Result<Vec<u8>> {
+    let certs = match &selected.location {
+        Location::Local(gost_sign_export::discovery::Source::Directory(folder)) => {
+            gost_sign_export::certificates_from_header(&read_small(&folder.join("header.key"))?)?
+        }
+        #[cfg(windows)]
+        Location::Local(_) => selected.certificates.clone(),
+        #[cfg(feature = "pcsc")]
+        Location::Token { reader, directory } => {
+            gost_sign_export::token::certificates(reader, *directory)?
+        }
+    };
+    choose_certificate(&certs).cloned()
+}
+fn choose_certificate(certs: &[Vec<u8>]) -> Result<&Vec<u8>> {
+    if certs.is_empty() {
+        return Err("Открытый сертификат не найден".into());
+    }
+    for (i, cert) in certs.iter().enumerate() {
+        println!("\nСертификат {}", i + 1);
+        show_certificate(cert)?;
+    }
+    let index = if certs.len() == 1 {
         1
     } else {
-        for (i, r) in readers.iter().enumerate() {
-            println!("{} — {}", i + 1, r.to_string_lossy());
-        }
-        prompt("Номер считывателя: ")?.parse::<usize>()?
+        prompt("Номер сертификата: ")?.parse::<usize>()?
     };
-    let reader = index
-        .checked_sub(1)
-        .and_then(|i| readers.get(i))
-        .ok_or("Неверный номер считывателя")?;
-    let directory = prompt("Каталог контейнера на токене, hex [0a00; Enter — оставить]: ")?;
-    let fid = if directory.is_empty() {
-        0x0a00
-    } else {
-        u16::from_str_radix(&directory, 16)?
-    };
-    f(reader, fid)
+    certs
+        .get(index.checked_sub(1).ok_or("Неверный номер сертификата")?)
+        .ok_or_else(|| "Неверный номер сертификата".into())
 }
-fn token_container() -> Result<Container> {
-    #[cfg(feature = "pcsc")]
-    {
-        with_token(|reader, fid| {
-            gost_sign_export::token::container_with_pin(reader, fid, || {
-                let pin = secret("PIN пользователя Рутокена (ввод скрыт, одна попытка): ")?;
-                Ok(Zeroizing::new(pin.as_bytes().to_vec()))
-            })
-        })
-    }
-    #[cfg(not(feature = "pcsc"))]
-    {
-        Err("В этой сборке нет PC/SC. Используйте полную сборку программы".into())
-    }
+fn export_selected_certificate(selected: &Selected) -> Result<()> {
+    confirm_selected(selected)?;
+    let certificate = selected_certificate(selected)?;
+    let output = destination("Новый файл сертификата", Path::new("certificate.cer"))?;
+    save(&output, &certificate)
 }
 fn token_certificates() -> Result<Vec<Vec<u8>>> {
-    #[cfg(feature = "pcsc")]
-    {
-        with_token(gost_sign_export::token::certificates)
-    }
-    #[cfg(not(feature = "pcsc"))]
-    {
-        Err("В этой сборке нет PC/SC. Используйте полную сборку программы".into())
-    }
+    let selected = choose_entry(token_entries()?)?;
+    Ok(vec![selected_certificate(&selected)?])
 }
-fn migrate() -> Result<()> {
-    println!(
-        "Перенос ключа и сертификата в защищённый PFX. Исходный контейнер сохраняется.\n1 — Папка контейнера КриптоПро (.000)\n2 — Подключённый Рутокен Lite"
-    );
-    let container = match prompt("Источник: ")?.as_str() {
-        "1" => Container::from_directory(&path("Папка контейнера (.000)", None)?)?,
-        "2" => token_container()?,
-        _ => return Err("Выберите 1 или 2".into()),
-    };
+
+fn migrate(selected: &Selected) -> Result<()> {
+    confirm_selected(selected)?;
+    let container = selected.load()?;
     let password = if container.source_password_required()? {
         secret("Пароль исходного контейнера КриптоПро: ")?
     } else {
@@ -170,10 +332,8 @@ fn migrate() -> Result<()> {
     };
     let key = container.primary_pkcs8(&password)?;
     let certs = container.certificates()?;
-    if certs.len() != 1 {
-        return Err("Для переноса пока требуется ровно один встроенный сертификат".into());
-    }
-    let identity = SigningIdentity::import_pkcs8(&certs[0], &key)?;
+    let certificate = choose_certificate(&certs)?;
+    let identity = SigningIdentity::import_pkcs8(certificate, &key)?;
     show_certificate(identity.certificate_der())?;
     println!("Соответствие ключа сертификату проверено.");
     let output = destination("Новый файл PFX", Path::new("identity.pfx"))?;
@@ -271,8 +431,14 @@ fn run() -> Result<()> {
     }
     if args.len() == 1 && (args[0] == "--help" || args[0] == "-h") {
         println!(
-            "gost-sign — подпись и работа с сертификатами\nЗапустите без аргументов для общего меню.\nПодпись и проверка документов; перенос ключа в PFX; экспорт сертификата.\n--version — версия, --help — справка.\nПароли вводятся скрыто. :назад в обычном поле — отмена; Ctrl+C — выход."
+            "gost-sign — подпись и работа с сертификатами\nЗапустите без аргументов для общего меню.\nПодпись и проверка документов; перенос ключа в PFX; экспорт сертификата.\n--list-containers — список локальных контейнеров без PIN.\n--version — версия, --help — справка.\nПароли вводятся скрыто. :назад в обычном поле — отмена; Ctrl+C — выход."
         );
+        return Ok(());
+    }
+    if args.len() == 1 && args[0] == "--list-containers" {
+        for entry in local_entries(None) {
+            entry.show()?;
+        }
         return Ok(());
     }
     if !args.is_empty() {
@@ -282,9 +448,18 @@ fn run() -> Result<()> {
         "gost-sign {}\nПароли вводятся скрыто. :назад — отмена действия; Ctrl+C — выход.\nПути с пробелами можно вставлять в кавычках.",
         env!("CARGO_PKG_VERSION")
     );
+    let mut selected: Option<Selected> = None;
     loop {
+        if let Some(current) = &selected {
+            println!("\nТекущий контейнер: {}", current.label());
+            for cert in &current.certificates {
+                show_certificate(cert)?;
+            }
+        } else {
+            println!("\nКонтейнер не выбран.");
+        }
         println!(
-            "\n1 — Подписать документ\n2 — Проверить подпись\n3 — Перенести ключ и сертификат в PFX\n4 — Экспортировать открытый сертификат (.cer)\n0 — Выход"
+            "\n1 — Подписать документ из PFX\n2 — Проверить подпись\n3 — Экспорт выбранного контейнера в PFX\n4 — Экспорт сертификата из файла/PFX\n5 — Выбрать или сменить контейнер\n6 — Экспорт сертификата выбранного контейнера\n0 — Выход"
         );
         let action = match prompt("Выберите действие: ") {
             Ok(s) => s,
@@ -296,10 +471,31 @@ fn run() -> Result<()> {
             "0" => return Ok(()),
             "1" => sign(),
             "2" => verify(),
-            "3" => migrate(),
+            "3" => {
+                if let Some(current) = &selected {
+                    migrate(current)
+                } else {
+                    Err("Сначала выберите контейнер (пункт 5)".into())
+                }
+            }
             "4" => export_certificate(),
+            "5" => match select_container() {
+                Ok(entry) => {
+                    selected = Some(entry);
+                    println!("Выбор сохранён. Теперь выберите действие.");
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            },
+            "6" => {
+                if let Some(current) = &selected {
+                    export_selected_certificate(current)
+                } else {
+                    Err("Сначала выберите контейнер (пункт 5)".into())
+                }
+            }
             _ => {
-                println!("Введите номер от 0 до 4.");
+                println!("Введите номер от 0 до 6.");
                 continue;
             }
         };

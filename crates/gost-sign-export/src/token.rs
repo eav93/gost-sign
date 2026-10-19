@@ -124,6 +124,71 @@ pub fn certificates(reader: &CStr, container: u16) -> Result<Vec<Vec<u8>>> {
     crate::certificates_from_header(&header).map_err(Into::into)
 }
 
+/// Metadata discovered without authentication or private-record reads.
+#[derive(Clone, Debug)]
+pub struct DiscoveredContainer {
+    pub directory: u16,
+    pub certificates: Vec<Vec<u8>>,
+    pub notice: Option<String>,
+}
+
+pub fn discover(reader: &CStr, progress: impl FnMut(u16)) -> Result<Vec<DiscoveredContainer>> {
+    let context = pcsc::Context::establish(pcsc::Scope::User)?;
+    let mut card = context.connect(reader, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
+    let transaction = card.transaction()?;
+    if transaction.status2_owned()?.atr() != ATR {
+        return Err("Считыватель не содержит поддерживаемый Рутокен Lite 1010".into());
+    }
+    scan_headers(
+        |command| {
+            let mut response = [0u8; 4096];
+            Ok(transaction.transmit(command, &mut response)?.to_vec())
+        },
+        progress,
+    )
+}
+
+fn scan_headers(
+    mut send: impl FnMut(&[u8]) -> Result<Vec<u8>>,
+    mut progress: impl FnMut(u16),
+) -> Result<Vec<DiscoveredContainer>> {
+    let mut result = Vec::new();
+    for fid in [0x3f00u16, 0x1000, 0x1003] {
+        let [hi, lo] = fid.to_be_bytes();
+        exchange(&mut send, &[0, 0xa4, 0, 0, 2, hi, lo, 0])?;
+    }
+    for directory in 0x0a00..=0x0aff {
+        progress(directory);
+        match read_header(directory, &mut send) {
+            Ok(header) => {
+                let (certificates, notice) = match crate::certificates_from_header(&header) {
+                    Ok(c) => (c, None),
+                    Err(_) => (
+                        vec![],
+                        Some("Не удалось разобрать открытый сертификат".into()),
+                    ),
+                };
+                result.push(DiscoveredContainer {
+                    directory,
+                    certificates,
+                    notice,
+                });
+            }
+            Err(e)
+                if e.downcast_ref::<CardStatus>()
+                    .is_some_and(|s| s.0 == 0x6a82) => {}
+            Err(e)
+                if e.downcast_ref::<CardStatus>()
+                    .is_some_and(|s| s.0 == 0x6982) =>
+            {
+                result.push(DiscoveredContainer { directory, certificates: vec![], notice: Some("Для чтения сертификата требуется авторизация; PIN при поиске не запрашивается".into()) });
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(result)
+}
+
 fn exchange(send: &mut impl FnMut(&[u8]) -> Result<Vec<u8>>, command: &[u8]) -> Result<Vec<u8>> {
     let mut response = send(command)?;
     let mut data = Vec::new();
@@ -355,5 +420,49 @@ mod tests {
         assert!(exchange(&mut |_| Ok(vec![0]), &[0]).is_err());
         assert!(file_size(&fci(0), 0x0a03).is_err());
         assert!(file_size(&fci(16385), 0x0a03).is_err());
+    }
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::*;
+    #[test]
+    fn sparse_and_protected_containers_are_detected_without_pin_or_private_reads() {
+        let mut selected = 0;
+        let mut scans = 0;
+        let found = scan_headers(
+            |cmd| {
+                assert_ne!(cmd.get(1), Some(&0x20)); // No VERIFY, even for a protected header.
+                assert_eq!(cmd.get(1), Some(&0xa4)); // This fixture denies headers before READ BINARY.
+                let fid = u16::from_be_bytes([cmd[5], cmd[6]]);
+                if fid == 0x3f00 {
+                    selected = 0;
+                }
+                if (0x0a00..=0x0aff).contains(&fid) {
+                    if fid == 0x0a03 && selected != 0 {
+                        return Ok(vec![0x69, 0x82]);
+                    }
+                    selected = 0;
+                    if fid == 0x0a01 || fid == 0x0aff {
+                        selected = fid;
+                        return Ok(vec![0x90, 0]);
+                    }
+                    return Ok(vec![0x6a, 0x82]);
+                }
+                Ok(vec![0x90, 0])
+            },
+            |_| scans += 1,
+        )
+        .expect("scan");
+        assert_eq!(scans, 256);
+        assert_eq!(
+            found.iter().map(|e| e.directory).collect::<Vec<_>>(),
+            [0x0a01, 0x0aff]
+        );
+        assert!(
+            found
+                .iter()
+                .all(|e| e.certificates.is_empty() && e.notice.is_some())
+        );
     }
 }

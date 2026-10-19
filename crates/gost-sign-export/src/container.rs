@@ -44,6 +44,11 @@ impl Container {
         Self::validate(records, false)
     }
 
+    #[cfg(windows)]
+    pub(crate) fn from_storage_records(records: Vec<Zeroizing<Vec<u8>>>) -> Result<Self> {
+        Self::validate(records, false)
+    }
+
     fn validate(mut records: Vec<Zeroizing<Vec<u8>>>, padded: bool) -> Result<Self> {
         if records.len() != FILES.len() {
             return Err("Нужны все шесть файлов контейнера".into());
