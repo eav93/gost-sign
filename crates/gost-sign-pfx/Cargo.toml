@@ -1,0 +1,18 @@
+[package]
+name = "gost-sign-pfx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+p12-keystore = { version = "=0.4.1", default-features = false }
+pkcs12 = "0.2.0-pre.0"
+der = "0.8"
+gost-sign-core = { path = "../gost-sign-core" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+pkcs8 = { version = "0.11", features = ["encryption"] }

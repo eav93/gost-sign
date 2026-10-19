@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["crates/gost-sign-core", "crates/gost-sign-php", "crates/gost-sign-experimental", "crates/gost-sign-cms", "crates/gost-sign-openssl", "crates/gost-sign-export", "crates/gost-sign-pfx", "crates/gost-sign-rust"]
+default-members = ["crates/gost-sign-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"

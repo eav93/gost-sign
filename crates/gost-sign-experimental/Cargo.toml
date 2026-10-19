@@ -1,0 +1,16 @@
+[package]
+name = "gost-sign-experimental"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+crypto-bigint = "0.7.5"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+streebog = "0.11.0"
+x509-cert = "0.3.0"

@@ -1,0 +1,75 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Существующий тег версии (например v0.1.0)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    outputs:
+      revision: ${{ steps.source.outputs.revision }}
+    steps:
+      - name: Проверить имя тега
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+      - id: source
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\([0-9.]*\)"$/\1/p' Cargo.toml)
+          test "v$version" = "$RELEASE_TAG"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  cli:
+    needs: source
+    uses: ./.github/workflows/binaries.yml
+    with:
+      ref: ${{ needs.source.outputs.revision }}
+  php:
+    needs: source
+    uses: ./.github/workflows/php-binaries.yml
+    with:
+      ref: ${{ needs.source.outputs.revision }}
+  publish:
+    needs: [cli, php]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: gost-sign-*
+          path: dist
+          merge-multiple: true
+      - name: Опубликовать архивы
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.txt <<'NOTES'
+          CLI: Linux, macOS и Windows, x86_64 и ARM64.
+          PHP: версии 8.1–8.5; Linux/macOS NTS, Windows x64 NTS/ZTS.
+          Каждый архив содержит готовую программу или расширение и документацию. Файлы .sha256 содержат контрольные суммы архивов.
+          Для CLI не требуется Rust, PHP, OpenSSL или КриптоПро. Системные зависимости и поддерживаемые форматы указаны в README и документации архива.
+          NOTES
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --notes-file release-notes.txt
+          fi
+          gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

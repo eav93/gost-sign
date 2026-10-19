@@ -1,0 +1,19 @@
+[package]
+name = "gost-sign-php"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+native-openssl = ["dep:gost-sign-openssl"]
+
+[dependencies]
+gost-sign-rust = { path = "../gost-sign-rust" }
+gost-sign-cms = { path = "../gost-sign-cms" }
+ext-php-rs = "=0.16.0"
+gost-sign-openssl = { path = "../gost-sign-openssl", optional = true }
+gost-sign-core = { path = "../gost-sign-core" }
+hex = "0.4"

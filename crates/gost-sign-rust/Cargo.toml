@@ -1,0 +1,29 @@
+[package]
+name = "gost-sign-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+crypto-bigint = { version = "0.7.5", features = ["subtle", "zeroize"] }
+subtle = "2"
+zeroize = "1"
+getrandom = "0.3"
+der = { version = "0.8", features = ["derive"] }
+pkcs8 = "0.11"
+gost-sign-core = { path = "../gost-sign-core" }
+gost-sign-cms = { path = "../gost-sign-cms" }
+gost-sign-pfx = { path = "../gost-sign-pfx" }
+gost-sign-export = { path = "../gost-sign-export" }
+rpassword = "7"
+tempfile = "3"
+
+[features]
+pcsc = ["gost-sign-export/pcsc"]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+gost-sign-experimental = { path = "../gost-sign-experimental" }

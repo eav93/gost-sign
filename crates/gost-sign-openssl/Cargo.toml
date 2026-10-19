@@ -1,0 +1,27 @@
+[package]
+name = "gost-sign-openssl"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+openssl = "0.10.81"
+der = "0.8"
+gost-sign-cms = { path = "../gost-sign-cms" }
+gost-sign-core = { path = "../gost-sign-core" }
+gost-sign-pfx = { path = "../gost-sign-pfx" }
+zeroize = "1"
+gost-sign-export = { path = "../gost-sign-export" }
+rpassword = "7"
+tempfile = "3"
+
+[features]
+pcsc = ["gost-sign-export/pcsc"]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+gost-sign-rust = { path = "../gost-sign-rust" }
+pkcs8 = { version = "0.11.0", features = ["encryption"] }

@@ -1,0 +1,92 @@
+name: Бинарники gost-sign
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: binaries-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  cli:
+    name: ${{ matrix.target }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98'
+      - name: Зависимости PC/SC для Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libpcsclite-dev
+      - name: Сборка
+        shell: bash
+        env:
+          EXPECTED_HOST: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          actual_host=$(rustc -vV | sed -n 's/^host: //p')
+          test "$actual_host" = "$EXPECTED_HOST"
+          cargo build --locked --release -p gost-sign-rust --bin gost-sign --features pcsc
+      - name: Тесты (без физического токена)
+        run: cargo test --locked --release -p gost-sign-core -p gost-sign-experimental -p gost-sign-cms -p gost-sign-pfx -p gost-sign-export -p gost-sign-rust --features gost-sign-rust/pcsc
+      - name: Проверка запуска Unix
+        if: runner.os != 'Windows'
+        run: |
+          ./target/release/gost-sign --version
+          ./target/release/gost-sign --help
+      - name: Проверка запуска Windows
+        if: runner.os == 'Windows'
+        run: |
+          ./target/release/gost-sign.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./target/release/gost-sign.exe --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Архив Unix
+        if: runner.os != 'Windows'
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: bash scripts/package-cli.sh "$PACKAGE_TARGET"
+      - name: Архив Windows
+        if: runner.os == 'Windows'
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: ./scripts/package-cli.ps1 -Target $env:PACKAGE_TARGET
+      - name: Сохранить архив и SHA-256
+        uses: actions/upload-artifact@v7
+        with:
+          name: gost-sign-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

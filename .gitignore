@@ -1,0 +1,14 @@
+/target/
+/.idea/
+/research/artifacts/
+/research/evidence/
+/tools/
+*.pfx
+*.p12
+*.key
+*.000/
+.env
+.env.*
+/private/
+
+/dist/

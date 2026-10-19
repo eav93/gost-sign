@@ -1,0 +1,67 @@
+name: Portable Rust and PHP
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98'
+          components: rustfmt, clippy
+      - name: Зависимости PC/SC для Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libpcsclite-dev
+      - run: cargo fmt --all --check
+      - run: cargo test --locked --release -p gost-sign-core -p gost-sign-experimental -p gost-sign-cms -p gost-sign-export -p gost-sign-pfx -p gost-sign-rust --features gost-sign-rust/pcsc
+      - run: cargo clippy --locked --release -p gost-sign-core -p gost-sign-experimental -p gost-sign-cms -p gost-sign-export -p gost-sign-pfx -p gost-sign-rust --features gost-sign-rust/pcsc --all-targets -- -D warnings
+  php-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+        php: ['8.4', '8.5']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98'
+      - run: cargo build --locked -p gost-sign-php
+      - shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            macOS) extension=target/debug/libgost_sign_php.dylib ;;
+            Linux) extension=target/debug/libgost_sign_php.so ;;
+          esac
+          php -n -d "extension=$PWD/$extension" crates/gost-sign-php/tests/smoke.php
+  php-windows:
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+        thread-safe: ['nts', 'ts']
+    env:
+      phpts: ${{ matrix.thread-safe }}
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      # Zend's Windows ABI uses vectorcall, which needs nightly in ext-php-rs.
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo +nightly build --locked -p gost-sign-php
+      - run: php -n -d extension=./target/debug/gost_sign_php.dll crates/gost-sign-php/tests/smoke.php

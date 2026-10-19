@@ -1,0 +1,15 @@
+[package]
+name = "gost-sign-cms"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+[dependencies]
+gost-sign-core = { path = "../gost-sign-core" }
+cms = "=0.3.0-pre.1"
+x509-cert = "0.3.0"
+der = { version = "0.8", features = ["alloc", "derive"] }
+[dev-dependencies]
+hex-literal = "1.0"
+[lints]
+workspace = true

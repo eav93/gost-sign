@@ -1,0 +1,21 @@
+[package]
+name = "gost-sign-export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+gost-sign-core = { path = "../gost-sign-core" }
+der = { version = "0.8", features = ["alloc"] }
+pcsc = { version = "2.9.0", optional = true }
+zeroize = "1"
+gost-crypto = "0.3"
+crypto-bigint = "0.7.5"
+subtle = "2"
+
+[lints]
+workspace = true
+
+[features]
+pcsc = ["dep:pcsc"]
