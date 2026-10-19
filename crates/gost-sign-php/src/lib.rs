@@ -164,11 +164,24 @@ pub fn gost_sign_cades_sign_pfx(
         .map_err(|e| PhpException::from_message(e.to_string()))
 }
 
+/// Открытый сертификат DER из PFX после проверки пароля и соответствия ключу.
+#[php_function]
+#[php(name = "gost_sign_pfx_certificate")]
+pub fn gost_sign_pfx_certificate(
+    pfx_der: BinarySlice<'_, u8>,
+    password: &str,
+) -> PhpResult<Binary<u8>> {
+    let identity = gost_sign_rust::SigningIdentity::import_pkcs12(&pfx_der, password)
+        .map_err(|e| PhpException::from_message(e.to_string()))?;
+    Ok(Binary::from(identity.certificate_der().to_vec()))
+}
+
 #[php_module]
 
 pub fn module(module: ModuleBuilder) -> ModuleBuilder {
     let module = module
         .function(wrap_function!(gost_sign_cades_sign_pfx))
+        .function(wrap_function!(gost_sign_pfx_certificate))
         .function(wrap_function!(gost_sign_hash256))
         .function(wrap_function!(gost_sign_hash512))
         .function(wrap_function!(gost_sign_verify_certificate_tc26_256_a))

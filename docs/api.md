@@ -55,6 +55,8 @@ $valid = gost_sign_cades_verify($document, $signature);
 
 Все входные документы, PFX и CMS — бинарные строки. Хеш-функции `gost_sign_hash256`/`gost_sign_hash512` возвращают hex. Проверка неверной подписи возвращает `false`; повреждённый DER, неподдерживаемый профиль, неверный пароль и несовпадение ключа вызывают исключение.
 
+`gost_sign_pfx_certificate($pfxBytes, $password)` возвращает сертификат X.509 DER после проверки пароля и соответствия ключу. Его SHA-1 отпечаток для API ЭДО: `strtoupper(sha1($certificateDer))`.
+
 Дополнительные функции: `gost_sign_cades_signed_attributes`, `gost_sign_cades_assemble`, `gost_sign_verify_certificate_tc26_256_a`. Последняя проверяет математическую подпись сертификата заданным ключом издателя без доверия цепочке.
 
 Функции старого OpenSSL backend включаются только feature `native-openssl`; [отдельная инструкция](legacy-openssl.md). Основной `gost_sign_cades_sign_pfx` не загружает провайдеров и не требует `GOST_PROVIDER_MODULE`.
