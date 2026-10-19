@@ -8,7 +8,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let container = gost_sign_export::container::Container::from_directory(Path::new(&args[0]))?;
     let password = if container.source_password_required()? {
-        Zeroizing::new(rpassword::prompt_password("Пароль исходного контейнера: ")?)
+        Zeroizing::new(rpassword::prompt_password(
+            "Пароль исходного контейнера (Enter — если пароль не установлен): ",
+        )?)
     } else {
         Zeroizing::new(String::new())
     };

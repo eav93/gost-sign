@@ -44,13 +44,26 @@ fn binding_randomized_signing_pfx_and_cms() {
 #[test]
 #[ignore = "requires GOST_CSP_FIXTURE_DIR: disposable test identity only"]
 fn disposable_csp_container_to_rust_signature() {
+    check_disposable_container("123456");
+}
+#[test]
+#[ignore = "requires GOST_CSP_FIXTURE_DIR: disposable CSP identity created with --no-password"]
+fn disposable_passwordless_csp_container_to_rust_signature() {
+    check_disposable_container("");
+}
+fn check_disposable_container(password: &str) {
     let folder =
         std::path::PathBuf::from(std::env::var_os("GOST_CSP_FIXTURE_DIR").expect("test fixtures"));
     let raw = gost_sign_export::container::Container::from_directory(
         &folder.join("hdimage-test/gost-sig.000"),
     )
     .expect("raw");
-    let pkcs8 = raw.primary_pkcs8("123456").expect("decode");
+    assert_eq!(
+        raw.source_password_required().expect("password detection"),
+        !password.is_empty()
+    );
+    assert!(raw.primary_pkcs8("wrong-test-password").is_err());
+    let pkcs8 = raw.primary_pkcs8(password).expect("decode");
     let cert = std::fs::read(folder.join("test-csp.cer")).expect("cert");
     let identity = SigningIdentity::import_pkcs8(&cert, &pkcs8).expect("full key binding");
     let pfx = identity

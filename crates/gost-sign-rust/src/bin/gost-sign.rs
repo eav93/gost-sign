@@ -326,7 +326,7 @@ fn migrate(selected: &Selected) -> Result<()> {
     confirm_selected(selected)?;
     let container = selected.load()?;
     let password = if container.source_password_required()? {
-        secret("Пароль исходного контейнера КриптоПро: ")?
+        secret("Пароль исходного контейнера КриптоПро (Enter — если пароль не установлен): ")?
     } else {
         Zeroizing::new(String::new())
     };

@@ -52,6 +52,17 @@ Windows PowerShell: `./scripts/package-cli.ps1 -Target x86_64-pc-windows-msvc`. 
 
 В `dist/` попадают только явно перечисленные бинарник, README, docs, examples, licenses и BUILD-INFO. Ни `target/` целиком, ни PFX/контейнеры, ни локальные рабочие каталоги не архивируются. Unix tar сохраняет права исполняемого файла. Проверка хеша: `shasum -a 256 -c файл.tar.gz.sha256` на macOS, `sha256sum -c файл.tar.gz.sha256` на Linux; Windows — `Get-FileHash файл.zip -Algorithm SHA256` и сравнение с `.sha256`.
 
+## Проверка контейнера без пароля
+
+Для проверки импорта на одноразовом контейнере КриптоПро используйте локальный тестовый образ с CSP и открытые тестовые данные генератора:
+
+```sh
+bash scripts/generate-csp-test-fixture.sh LOCAL_CSP_IMAGE private/csp-no-password --no-password
+GOST_CSP_FIXTURE_DIR="$PWD/private/csp-no-password" cargo test --release -p gost-sign-rust --features cli --test signing disposable_passwordless_csp_container_to_rust_signature -- --ignored
+```
+
+Каталог назначения должен быть новым. Генератор запускается в изолированном контейнере без сети и без подключения пользовательских ключей. Тест проверяет отсутствие запроса пароля, соответствие ключа сертификату, перенос в защищённый PFX и подпись. Без `--no-password` генератор создаёт тестовый контейнер с паролем `123456`; для него запускается тест `disposable_csp_container_to_rust_signature`.
+
 ## Релизы
 
 `release.yml` запускается при push тега `v<major>.<minor>.<patch>` или вручную с существующим тегом. Версия тега должна совпадать с workspace version в Cargo.toml. Workflow фиксирует commit тега, вызывает сборки CLI и PHP, затем публикует архивы и SHA-256 в [GitHub Releases](https://github.com/eav93/gost-sign/releases). Релиз не публикуется, пока хотя бы одна обязательная сборка не завершилась успешно.

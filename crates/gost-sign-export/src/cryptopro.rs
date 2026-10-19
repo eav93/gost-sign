@@ -133,6 +133,20 @@ fn wrap(tag: Tag, content: &[u8]) -> Result<Vec<u8>> {
     Ok(AnyRef::new(tag, content)?.to_der()?)
 }
 
+fn password_matches(password: &str, fingerprint: &[u8], stored: &[u8]) -> Result<bool> {
+    if stored.len() != 4 {
+        return Err("Неподдерживаемая длина кода проверки пароля".into());
+    }
+    // CSP also writes an all-zero verifier for containers without a password.
+    // This marker accepts only the empty password; mask integrity and full
+    // key/certificate binding must still be verified during import.
+    if bool::from(stored.ct_eq(&[0; 4])) {
+        return Ok(password.is_empty());
+    }
+    let key = cpkdf(password, fingerprint)?;
+    Ok(bool::from(mac(&key, &[0; 16]).ct_eq(stored)))
+}
+
 impl Container {
     /// Offline metadata check, not a token login attempt. Verifies header MAC first.
     pub fn source_password_required(&self) -> Result<bool> {
@@ -144,8 +158,11 @@ impl Container {
         let content = fields(&content_der)?;
         let fingerprint = tagged(&content, TagNumber(10).context_specific(false))?;
         let password_mac = tagged(&content, TagNumber(2).context_specific(false))?;
-        let key = cpkdf("", fingerprint.value())?;
-        Ok(!bool::from(mac(&key, &[0; 16]).ct_eq(password_mac.value())))
+        Ok(!password_matches(
+            "",
+            fingerprint.value(),
+            password_mac.value(),
+        )?)
     }
 
     /// Decode the primary key into PKCS#8 after password and metadata MAC checks.
@@ -160,8 +177,7 @@ impl Container {
         let content = fields(&content_der)?;
         let fingerprint = tagged(&content, TagNumber(10).context_specific(false))?;
         let password_mac = tagged(&content, TagNumber(2).context_specific(false))?;
-        let password_key = cpkdf(password, fingerprint.value())?;
-        if !bool::from(mac(&password_key, &[0; 16]).ct_eq(password_mac.value())) {
+        if !password_matches(password, fingerprint.value(), password_mac.value())? {
             return Err(
                 "Неверный пароль исходного контейнера или повреждены данные проверки пароля".into(),
             );
@@ -238,6 +254,66 @@ impl Container {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn header_container(verifier: &[u8], fingerprint: &[u8]) -> Container {
+        let mut content =
+            wrap(TagNumber(2).context_specific(false), verifier).expect("valid test fixture");
+        content.extend(
+            wrap(TagNumber(10).context_specific(false), fingerprint).expect("valid test fixture"),
+        );
+        let mut header = wrap(Tag::Sequence, &content).expect("valid test fixture");
+        let checksum = mac(&[0; 32], &header);
+        header.extend(wrap(Tag::OctetString, &checksum).expect("valid test fixture"));
+        Container {
+            records: vec![
+                Zeroizing::new(vec![]),
+                Zeroizing::new(vec![]),
+                Zeroizing::new(wrap(Tag::Sequence, &header).expect("valid test fixture")),
+            ],
+        }
+    }
+    #[test]
+    fn password_detection_accepts_both_empty_password_profiles() {
+        let fingerprint = [7; 8];
+        let computed = mac(
+            &cpkdf("", &fingerprint).expect("valid test fixture"),
+            &[0; 16],
+        );
+        for verifier in [[0; 4], computed] {
+            let container = header_container(&verifier, &fingerprint);
+            assert!(
+                !container
+                    .source_password_required()
+                    .expect("valid test fixture")
+            );
+            assert!(password_matches("", &fingerprint, &verifier).expect("valid test fixture"));
+            assert!(
+                !password_matches("wrong", &fingerprint, &verifier).expect("valid test fixture")
+            );
+        }
+        let protected = mac(
+            &cpkdf("test-password", &fingerprint).expect("valid test fixture"),
+            &[0; 16],
+        );
+        assert!(
+            header_container(&protected, &fingerprint)
+                .source_password_required()
+                .expect("valid test fixture")
+        );
+        assert!(
+            password_matches("test-password", &fingerprint, &protected)
+                .expect("valid test fixture")
+        );
+        assert!(!password_matches("", &fingerprint, &protected).expect("valid test fixture"));
+        assert!(password_matches("", &fingerprint, &[0; 3]).is_err());
+    }
+    #[test]
+    fn empty_password_marker_does_not_bypass_header_integrity() {
+        let mut container = header_container(&[0; 4], &[7; 8]);
+        let header = &mut container.records[2];
+        *header.last_mut().expect("valid test fixture") ^= 1;
+        assert!(container.source_password_required().is_err());
+        assert!(container.primary_pkcs8("").is_err());
+    }
     #[test]
     fn published_cpkdf_vector() {
         let salt = [
