@@ -24,6 +24,15 @@
 
 Архив CLI содержит один исполняемый файл. Установка Rust не требуется. Linux-сборка требует glibc и `libpcsclite1`; для работы с токеном нужны служба PC/SC и драйвер устройства. [Системные требования](docs/usage.md#установка).
 
+Зависимости для Ubuntu 24.04:
+
+```sh
+sudo apt-get update
+sudo apt-get install --no-install-recommends libc6 libpcsclite1
+```
+
+glibc входит в пакет `libc6` и обычно уже установлена. Для подключения токена см. [установку PC/SC и проверку считывателя](docs/usage.md#зависимости-linux).
+
 ## CLI
 
 Linux/macOS:
