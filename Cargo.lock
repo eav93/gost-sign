@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-cms"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "cms",
  "der",
@@ -776,7 +776,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "der",
  "gost-sign-experimental",
@@ -788,7 +788,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-experimental"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crypto-bigint",
  "streebog",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-export"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crypto-bigint",
  "der",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-openssl"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "der",
  "gost-sign-cms",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-pfx"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "der",
  "gost-sign-core",
@@ -838,7 +838,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-php"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ext-php-rs",
  "gost-sign-cms",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "gost-sign-rust"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crypto-bigint",
  "der",

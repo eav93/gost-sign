@@ -15,6 +15,22 @@ impl std::fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Generate a 32-character ASCII password with 192 bits of OS randomness.
+/// Does not print or persist the password; callers own its presentation/storage.
+pub fn generate_pfx_password() -> Result<Zeroizing<String>> {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut random = Zeroizing::new([0u8; 32]);
+    getrandom::fill(random.as_mut())
+        .map_err(|_| Error("Не удалось получить случайные данные ОС"))?;
+    let mut password = Zeroizing::new(String::with_capacity(32));
+    // 256 is divisible by 64: the mapping has no modulo bias.
+    for byte in random.iter() {
+        password.push(char::from(ALPHABET[usize::from(byte & 63)]));
+    }
+    Ok(password)
+}
+
 /// Owns a validated key and its certificate. No Debug/Clone/secret accessors.
 pub struct SigningIdentity {
     key: Zeroizing<[u8; 32]>,

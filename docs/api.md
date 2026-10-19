@@ -18,6 +18,8 @@ let valid = gost_sign_cms::verification::verify_detached(&document_bytes, &signa
 let pfx_with_new_password = identity.export_pkcs12(new_password)?;
 ```
 
+`gost_sign_rust::generate_pfx_password()?` возвращает `Zeroizing<String>`: случайный пароль из 32 ASCII-символов (192 бита случайности ОС). Библиотека не выводит и не сохраняет его. Передайте пароль в `export_pkcs12(&password)` и обеспечьте его сохранение в приложении. Сам `export_pkcs12` продолжает отклонять пустой пароль; автоматическая генерация по Enter относится к интерактивному CLI и примеру `export_container`.
+
 `import_pkcs8(certificate_der, pkcs8_der)` принимает обычный PKCS#8 и сверяет полный открытый ключ. `certificate_der()` возвращает открытый сертификат. `sign(data)` возвращает 64 байта `s_BE || r_BE`, хешируя данные Streebog-256; это не prehash API. `sign_cades` возвращает DER CAdES-BES с сертификатом и подписанными атрибутами. `SigningIdentity` не реализует `Debug`/`Clone` и не предоставляет экспорт открытого закрытого ключа.
 
 Для интеграции с внешним подписантом `PreparedDetachedSignature::new(content, certificate)` предоставляет точные `signed_attributes_der()` и `signing_digest()`. Внешний подписант подписывает атрибуты либо их хеш, без двойного хеширования; `finish(signature)` собирает CMS и сам по себе не проверяет подпись.

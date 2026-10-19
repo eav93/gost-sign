@@ -337,18 +337,23 @@ fn migrate(selected: &Selected) -> Result<()> {
     show_certificate(identity.certificate_der())?;
     println!("Соответствие ключа сертификату проверено.");
     let output = destination("Новый файл PFX", Path::new("identity.pfx"))?;
-    let password = loop {
-        let password = secret("Новый пароль PFX (обязателен): ")?;
+    let (password, generated) = loop {
+        let password = secret("Новый пароль PFX (Enter — сгенерировать случайный): ")?;
         if password.is_empty() {
-            println!("Пароль не может быть пустым.");
-            continue;
+            break (gost_sign_rust::generate_pfx_password()?, true);
         }
         if *password == *secret("Повторите новый пароль: ")? {
-            break password;
+            break (password, false);
         }
         println!("Пароли не совпали. Повторите ввод.");
     };
     save(&output, &identity.export_pkcs12(&password)?)?;
+    if generated {
+        println!("Сгенерированный пароль PFX: {}", password.as_str());
+        println!(
+            "Сохраните пароль в менеджере паролей. Он показан в терминале и не записан в отдельный файл."
+        );
+    }
     println!("Для подписи этим PFX нужны только файл и новый пароль. Старый PIN не сохраняется.");
     Ok(())
 }

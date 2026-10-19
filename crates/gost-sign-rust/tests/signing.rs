@@ -10,6 +10,24 @@ fn key() -> Vec<u8> {
     der
 }
 #[test]
+fn generated_password_protects_pfx() {
+    let password = gost_sign_rust::generate_pfx_password().expect("OS random password");
+    let other = gost_sign_rust::generate_pfx_password().expect("independent password");
+    assert_eq!(password.len(), 32);
+    assert!(
+        password
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+    );
+    assert_ne!(*password, *other);
+    let identity = SigningIdentity::import_pkcs8(CERT, &key()).expect("public fixture");
+    let pfx = identity.export_pkcs12(&password).expect("export");
+    let restored = SigningIdentity::import_pkcs12(&pfx, &password).expect("generated password");
+    assert_eq!(restored.certificate_der(), CERT);
+    assert!(SigningIdentity::import_pkcs12(&pfx, &other).is_err());
+    assert!(SigningIdentity::import_pkcs12(&pfx, "").is_err());
+}
+#[test]
 fn binding_randomized_signing_pfx_and_cms() {
     let identity = SigningIdentity::import_pkcs8(CERT, &key()).expect("public d=1");
     let a = identity.sign(b"document").expect("sign");

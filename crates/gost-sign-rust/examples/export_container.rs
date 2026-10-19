@@ -20,11 +20,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("Требуется один встроенный сертификат".into());
     }
     let identity = gost_sign_rust::SigningIdentity::import_pkcs8(&certs[0], &key)?;
-    let new_password = Zeroizing::new(rpassword::prompt_password("Новый пароль PFX: ")?);
-    let repeated = Zeroizing::new(rpassword::prompt_password("Повторите пароль: ")?);
-    if new_password.is_empty() || *new_password != *repeated {
-        return Err("Пароли пусты или не совпадают".into());
-    }
+    let entered = Zeroizing::new(rpassword::prompt_password(
+        "Новый пароль PFX (Enter — сгенерировать случайный): ",
+    )?);
+    let generated = entered.is_empty();
+    let new_password = if generated {
+        gost_sign_rust::generate_pfx_password()?
+    } else {
+        let repeated = Zeroizing::new(rpassword::prompt_password("Повторите пароль: ")?);
+        if *entered != *repeated {
+            return Err("Пароли не совпадают".into());
+        }
+        entered
+    };
     let pfx = identity.export_pkcs12(&new_password)?;
     let destination = Path::new(&args[1]);
     let parent = destination
@@ -36,5 +44,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     output.as_file().sync_all()?;
     output.persist_noclobber(destination).map_err(|e| e.error)?;
     println!("PFX сохранён: {}", destination.display());
+    if generated {
+        println!("Сгенерированный пароль PFX: {}", new_password.as_str());
+        println!(
+            "Сохраните пароль в менеджере паролей. Он показан в терминале и не записан в отдельный файл."
+        );
+    }
     Ok(())
 }
